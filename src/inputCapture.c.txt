@@ -1,0 +1,40 @@
+#include <zephyr/kernel.h>             // Funções básicas do Zephyr (ex: k_msleep)
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>       // API para controle de GPIO
+#include "pwm_z42.h"                // API para controle de PWM
+
+#define TPM_IRQ_LINE TPM1_IRQn  // relaciona a interrupção ao timer TPM1
+#define TPM_IRQ_PRIORITY 1      // define a prioridade da interrupção
+
+volatile uint16_t captured= 0; 
+
+void tpm1_isr_inputCapture(void *arg)
+{
+       TPM1->STATUS |= TPM_STATUS_CH0F_MASK; // zera a flag que gerou a interrupção
+
+       captured = TPM1->CONTROLS[0].CnV; // coloca o valor atual do timer na variável "captured"
+}
+
+void inputCaptureMain(void)
+{
+    // Conecta a interrupção via Zephyr
+    IRQ_CONNECT(TPM_IRQ_LINE, TPM_IRQ_PRIORITY, tpm1_isr_inputCapture, NULL, 0);
+    irq_enable(TPM_IRQ_LINE);
+ 
+    // Inicializa TPM1 com módulo e prescaler desejado
+    //TPM1 configurado para contar de 0 ate 65535
+    pwm_tpm_Init(TPM1, TPM_PLLFLL, 65535, TPM_CLK, PS_128, EDGE_PWM);
+
+    //Configura TPM1_CH0 como input capture na borda de subida no GPIOE pino 20
+    // - Ele inicializa o módulo de timer TPM1 para contar continuamente.
+    // - Configura especificamente o Canal 0 deste timer associado ao pino GPIOE 20 para operar no modo TPM_INPUT_CAPTURE_RISING (captura na borda de subida)
+    // - Habilita a interrupção para esse canal (TPM_CHANNEL_INTERRUPT).
+    pwm_tpm_Ch_Init(TPM1, 0, TPM_INPUT_CAPTURE_RISING| TPM_CHANNEL_INTERRUPT, GPIOE, 20);
+
+    while (1)
+    {
+        printk("Valor do TPM1: %u\n", captured);
+        k_msleep(1000); 
+    }
+}
+
